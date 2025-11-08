@@ -21,6 +21,19 @@ extern "C"
 #    define ChassisForward_GetY         Mecanum4Forward_GetY
 #endif
 
+static uint32_t isr_lock()
+{
+    const uint32_t primask = __get_PRIMASK();
+    __disable_irq();
+    return primask;
+}
+static void isr_unlock(uint32_t primask)
+{
+    __DSB();
+    __ISB();
+    __set_PRIMASK(primask);
+}
+
 /**
  * 将世界坐标系下的速度变换为车身坐标系下的速度
  *
@@ -167,11 +180,6 @@ static void update_chassis_velocity_control(Chassis_t* chassis)
         Chassis_WorldVelocity2BodyVelocity(chassis,
                                            &chassis->velocity.in_world,
                                            &chassis->velocity.in_body);
-
-        ChassisDriver_ApplyVelocity(&chassis->driver,
-                                    chassis->velocity.in_body.vx,
-                                    chassis->velocity.in_body.vy,
-                                    chassis->velocity.in_body.wz);
         // 进行修正 1e-3f 为更新间隔，此处发现前馈并没有什么精度优化，暂时不做前馈
         // const float              beta     = DEG2RAD(0.5f * chassis->velocity.in_body.wz * 1e-3f);
         // const float              cot_beta = 1.0f / tanf(beta);
@@ -187,8 +195,12 @@ static void update_chassis_velocity_control(Chassis_t* chassis)
     }
     else
     {
-        // 速度 apply 后会一直生效，相对于 body frame 保持不变，故此处不需要执行任何操作
+        // 直接应用速度
     }
+    ChassisDriver_ApplyVelocity(&chassis->driver,
+                                chassis->velocity.in_body.vx,
+                                chassis->velocity.in_body.vy,
+                                chassis->velocity.in_body.wz);
 }
 
 void update_chassis_position_control(Chassis_t* chassis)
@@ -240,14 +252,22 @@ void Chassis_Update(Chassis_t* chassis)
         update_chassis_velocity_control(chassis);
     else if (chassis->ctrl_mode == CHASSIS_POS)
         update_chassis_position_control(chassis);
-
     // 更新底盘驱动器
     ChassisDriver_Update(&chassis->driver);
 }
 
+/**
+ * 相对于世界坐标系设置目标位姿
+ * @param chassis 底盘
+ * @param absolute_target 绝对目标位姿
+ */
 void Chassis_SetTargetPostureInWorld(Chassis_t*                     chassis,
                                      const Chassis_PostureTarget_t* absolute_target)
 {
+    osMutexAcquire(chassis->lock, osWaitForever);
+
+    const uint32_t saved = isr_lock(); // 写入过程加中断锁
+
     chassis->posture.target.posture.x     = absolute_target->posture.x;
     chassis->posture.target.posture.y     = absolute_target->posture.y;
     chassis->posture.target.posture.yaw   = absolute_target->posture.yaw;
@@ -257,15 +277,29 @@ void Chassis_SetTargetPostureInWorld(Chassis_t*                     chassis,
     chassis->posture.pd.vx.abs_output_max = absolute_target->speed;
     chassis->posture.pd.vy.abs_output_max = absolute_target->speed;
     chassis->posture.pd.wz.abs_output_max = absolute_target->omega;
+
+    isr_unlock(saved);
+
+    osMutexRelease(chassis->lock);
 }
 
+/**
+ * 相对于机身坐标系设置目标位姿
+ * @param chassis 底盘
+ * @param relative_target 相对目标位姿
+ */
 void Chassis_SetTargetPostureInBody(Chassis_t*                     chassis,
                                     const Chassis_PostureTarget_t* relative_target)
 {
     Chassis_PostureTarget_t absolute_target;
+
+    osMutexAcquire(chassis->lock, osWaitForever);
     Chassis_BodyPosture2WorldPosture(chassis, &relative_target->posture, &absolute_target.posture);
+    osMutexRelease(chassis->lock);
+
     absolute_target.speed = relative_target->speed;
     absolute_target.omega = relative_target->omega;
+
     Chassis_SetTargetPostureInWorld(chassis, &absolute_target);
 }
 
@@ -282,16 +316,24 @@ void Chassis_SetVelWorldFrame(Chassis_t*                chassis,
                               const Chassis_Velocity_t* world_velocity,
                               const bool                target_in_world)
 {
+    osMutexAcquire(chassis->lock, osWaitForever);
+    Chassis_Velocity_t shadow_body_velocity;
+    Chassis_WorldVelocity2BodyVelocity(chassis, world_velocity, &shadow_body_velocity);
+
+    const uint32_t saved = isr_lock(); // 写入过程加中断锁
+
     chassis->velocity.target_in_world = target_in_world;
     chassis->velocity.in_world.vx     = world_velocity->vx;
     chassis->velocity.in_world.vy     = world_velocity->vy;
     chassis->velocity.in_world.wz     = world_velocity->wz;
-    Chassis_WorldVelocity2BodyVelocity(chassis, world_velocity, &chassis->velocity.in_body);
-    ChassisDriver_ApplyVelocity(&chassis->driver,
-                                chassis->velocity.in_body.vx,
-                                chassis->velocity.in_body.vy,
-                                chassis->velocity.in_body.wz);
-    chassis->ctrl_mode = CHASSIS_VEL;
+    chassis->velocity.in_body.vx      = shadow_body_velocity.vx;
+    chassis->velocity.in_body.vy      = shadow_body_velocity.vy;
+    chassis->velocity.in_body.wz      = shadow_body_velocity.wz;
+    chassis->ctrl_mode                = CHASSIS_VEL;
+
+    isr_unlock(saved);
+
+    osMutexRelease(chassis->lock);
 }
 
 /**
@@ -307,16 +349,23 @@ void Chassis_SetVelBodyFrame(Chassis_t*                chassis,
                              const Chassis_Velocity_t* body_velocity,
                              const bool                target_in_world)
 {
+    osMutexAcquire(chassis->lock, osWaitForever);
+    Chassis_Velocity_t shadow_world_velocity;
+    Chassis_BodyVelocity2WorldVelocity(chassis, body_velocity, &shadow_world_velocity);
+
+    const uint32_t saved = isr_lock(); // 写入过程加中断锁
+
     chassis->velocity.target_in_world = target_in_world;
     chassis->velocity.in_body.vx      = body_velocity->vx;
     chassis->velocity.in_body.vy      = body_velocity->vy;
     chassis->velocity.in_body.wz      = body_velocity->wz;
-    Chassis_BodyVelocity2WorldVelocity(chassis, body_velocity, &chassis->velocity.in_world);
-    ChassisDriver_ApplyVelocity(&chassis->driver,
-                                chassis->velocity.in_body.vx,
-                                chassis->velocity.in_body.vy,
-                                chassis->velocity.in_body.wz);
-    chassis->ctrl_mode = CHASSIS_VEL;
+    chassis->velocity.in_world.vx     = shadow_world_velocity.vx;
+    chassis->velocity.in_world.vy     = shadow_world_velocity.vy;
+    chassis->velocity.in_world.wz     = shadow_world_velocity.wz;
+    chassis->ctrl_mode                = CHASSIS_VEL;
+
+    isr_unlock(saved);
+    osMutexRelease(chassis->lock);
 }
 
 /**
@@ -325,6 +374,10 @@ void Chassis_SetVelBodyFrame(Chassis_t*                chassis,
  */
 void Chassis_SetWorldFromCurrent(Chassis_t* chassis)
 {
+    osMutexAcquire(chassis->lock, osWaitForever);
+
+    const uint32_t saved = isr_lock(); // 写入过程加中断锁
+
     chassis->world.posture.x += chassis->posture.in_world.x;
     chassis->world.posture.y += chassis->posture.in_world.y;
     chassis->world.posture.yaw += chassis->posture.in_world.yaw;
@@ -332,6 +385,10 @@ void Chassis_SetWorldFromCurrent(Chassis_t* chassis)
     chassis->posture.in_world.y   = 0.0f;
     chassis->posture.in_world.yaw = 0.0f;
     chassis->velocity.in_world    = chassis->velocity.in_body;
+
+    isr_unlock(saved);
+
+    osMutexRelease(chassis->lock);
 }
 
 #ifdef __cplusplus

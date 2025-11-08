@@ -61,10 +61,11 @@ typedef struct
 {
     osMutexId_t lock;
 
-    Chassis_CtrlMode_t ctrl_mode; ///< 控制模式
+    volatile Chassis_CtrlMode_t ctrl_mode; ///< 控制模式
+
     struct
     {
-        bool               target_in_world; ///< 速度是否相对于世界坐标系不变
+        volatile bool      target_in_world; ///< 速度是否相对于世界坐标系不变
         Chassis_Velocity_t in_world;        ///< 世界坐标系下速度
         Chassis_Velocity_t in_body;         ///< 车体坐标系下速度
     } velocity;
@@ -75,7 +76,7 @@ typedef struct
         /**
          * feedback_yaw - world_yaw = body_yaw
          */
-        Chassis_Posture_t in_world; ///< 车身位置（世界坐标系与车身坐标系的变换关系）
+        volatile Chassis_Posture_t in_world; ///< 车身位置（世界坐标系与车身坐标系的变换关系）
 
         struct
         {
@@ -87,7 +88,7 @@ typedef struct
 
     struct
     {
-        Chassis_Posture_t posture; ///< 世界坐标系位置（相对于反馈）
+        volatile Chassis_Posture_t posture; ///< 世界坐标系位置（相对于反馈）
     } world;
 
     ChassisDriver_t driver; ///< 底盘驱动器
@@ -100,13 +101,13 @@ typedef struct
     struct
     {
         // 相对于车体
-        float* vx; ///< 指向车体前方 (unit: m/s)
-        float* vy; ///< 指向车体左侧 (unit: m/s)
-        float* wz; ///< 车体角速度 (unit: deg/s)
+        volatile float* vx; ///< 指向车体前方 (unit: m/s)
+        volatile float* vy; ///< 指向车体左侧 (unit: m/s)
+        volatile float* wz; ///< 车体角速度 (unit: deg/s)
 
-        float* sx;  ///< x 方向里程计读数 (unit: m)
-        float* sy;  ///< y 方向里程计读数 (unit: m)
-        float* yaw; ///< 车体角度 (unit: deg)
+        volatile float* sx;  ///< x 方向里程计读数 (unit: m)
+        volatile float* sy;  ///< y 方向里程计读数 (unit: m)
+        volatile float* yaw; ///< 车体角度 (unit: deg)
     } feedback;
 
     struct
