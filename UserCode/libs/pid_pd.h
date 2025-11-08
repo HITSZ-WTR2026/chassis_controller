@@ -28,7 +28,8 @@
 #define PID_PD_H
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 typedef struct

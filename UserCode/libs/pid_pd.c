@@ -25,14 +25,15 @@
 #include <string.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 void PD_Calculate(PD_t* pd)
 {
     pd->cur_error = pd->ref - pd->fdb;
     pd->output += pd->Kp * (pd->cur_error - pd->prev_error1) +
-                    pd->Kd * (pd->cur_error - 2 * pd->prev_error1 + pd->prev_error2);
+                  pd->Kd * (pd->cur_error - 2 * pd->prev_error1 + pd->prev_error2);
     if (pd->output > pd->abs_output_max)
         pd->output = pd->abs_output_max;
     if (pd->output < -pd->abs_output_max)

@@ -13,7 +13,7 @@
  */
 void Init(void* argument)
 {
-	/* 初始化代码 */
+    /* 初始化代码 */
 
     /* 初始化完成后退出线程 */
     osThreadExit();

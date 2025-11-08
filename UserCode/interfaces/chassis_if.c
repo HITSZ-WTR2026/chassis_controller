@@ -8,7 +8,8 @@
 #include <math.h>
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #ifdef CHASSIS_MECANUM4
@@ -113,15 +114,15 @@ void Chassis_Init(Chassis_t* chassis, const Chassis_Config_t* config)
 {
     ChassisDriver_Init(&chassis->driver, &config->driver);
 
-    chassis->feedback.vx = config->feedback_source.vx;
-    chassis->feedback.vy = config->feedback_source.vy;
-    chassis->feedback.wz = config->feedback_source.wz;
-    chassis->feedback.sx = config->feedback_source.sx;
-    chassis->feedback.sy = config->feedback_source.sy;
+    chassis->feedback.vx  = config->feedback_source.vx;
+    chassis->feedback.vy  = config->feedback_source.vy;
+    chassis->feedback.wz  = config->feedback_source.wz;
+    chassis->feedback.sx  = config->feedback_source.sx;
+    chassis->feedback.sy  = config->feedback_source.sy;
     chassis->feedback.yaw = config->feedback_source.yaw;
 
-    chassis->last_feedback.sx = 0;
-    chassis->last_feedback.sy = 0;
+    chassis->last_feedback.sx  = 0;
+    chassis->last_feedback.sy  = 0;
     chassis->last_feedback.yaw = 0;
 
     // 初始化位置 PD 控制器
@@ -189,7 +190,7 @@ static void update_chassis_velocity_control(Chassis_t* chassis)
 void update_chassis_position_control(Chassis_t* chassis)
 {
     // 计算与目标的相对位置
-Chassis_Posture_t relative_posture;
+    Chassis_Posture_t relative_posture;
     Chassis_WorldPosture2BodyPosture(chassis, &chassis->posture.target.posture, &relative_posture);
     // 计算速度
     chassis->posture.pd.vx.ref = relative_posture.x;
@@ -201,11 +202,9 @@ Chassis_Posture_t relative_posture;
     PD_Calculate(&chassis->posture.pd.vx);
     PD_Calculate(&chassis->posture.pd.vy);
     PD_Calculate(&chassis->posture.pd.wz);
-    Chassis_Velocity_t body_velocity = {
-        .vx = chassis->posture.pd.vx.output,
-        .vy = chassis->posture.pd.vy.output,
-        .wz = chassis->posture.pd.wz.output
-    };
+    Chassis_Velocity_t body_velocity = { .vx = chassis->posture.pd.vx.output,
+                                         .vy = chassis->posture.pd.vy.output,
+                                         .wz = chassis->posture.pd.wz.output };
 
     const float speed = sqrtf(body_velocity.vx * body_velocity.vx +
                               body_velocity.vy * body_velocity.vy);
@@ -241,16 +240,15 @@ void Chassis_Update(Chassis_t* chassis)
     ChassisDriver_Update(&chassis->driver);
 }
 
-
-    void Chassis_SetTargetPostureInWorld(Chassis_t*                     chassis,
-                                         const Chassis_PostureTarget_t* absolute_target)
+void Chassis_SetTargetPostureInWorld(Chassis_t*                     chassis,
+                                     const Chassis_PostureTarget_t* absolute_target)
 {
-    chassis->posture.target.posture.x   = absolute_target->posture.x;
-    chassis->posture.target.posture.y   = absolute_target->posture.y;
-    chassis->posture.target.posture.yaw = absolute_target->posture.yaw;
-    chassis->posture.target.speed       = absolute_target->speed;
-    chassis->posture.target.omega       = absolute_target->omega;
-    chassis->ctrl_mode                  = CHASSIS_POS;
+    chassis->posture.target.posture.x     = absolute_target->posture.x;
+    chassis->posture.target.posture.y     = absolute_target->posture.y;
+    chassis->posture.target.posture.yaw   = absolute_target->posture.yaw;
+    chassis->posture.target.speed         = absolute_target->speed;
+    chassis->posture.target.omega         = absolute_target->omega;
+    chassis->ctrl_mode                    = CHASSIS_POS;
     chassis->posture.pd.vx.abs_output_max = absolute_target->speed;
     chassis->posture.pd.vy.abs_output_max = absolute_target->speed;
     chassis->posture.pd.wz.abs_output_max = absolute_target->omega;
@@ -260,7 +258,9 @@ void Chassis_SetTargetPostureInBody(Chassis_t*                     chassis,
                                     const Chassis_PostureTarget_t* relative_target)
 {
     Chassis_PostureTarget_t absolute_target;
-    Chassis_BodyPosture2WorldPosture(chassis, &relative_target->posture, (Chassis_Posture_t*)&absolute_target);
+    Chassis_BodyPosture2WorldPosture(chassis,
+                                     &relative_target->posture,
+                                     (Chassis_Posture_t*) &absolute_target);
     absolute_target.speed = relative_target->speed;
     absolute_target.omega = relative_target->omega;
     Chassis_SetTargetPostureInWorld(chassis, &absolute_target);
