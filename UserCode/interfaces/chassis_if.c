@@ -95,11 +95,10 @@ void Chassis_BodyPosture2WorldPosture(const Chassis_t*         chassis,
     const float sin_yaw = sinf(DEG2RAD(chassis->posture.in_world.yaw)),
                 cos_yaw = cosf(DEG2RAD(chassis->posture.in_world.yaw));
 
-    const float tx = posture_in_body->x + chassis->posture.in_world.x;
-    const float ty = posture_in_body->y + chassis->posture.in_world.y;
-
-    posture_in_world->x   = tx * cos_yaw - ty * sin_yaw;
-    posture_in_world->y   = tx * sin_yaw + ty * cos_yaw;
+    posture_in_world->x = posture_in_body->x * cos_yaw - posture_in_body->y * sin_yaw +
+                          chassis->posture.in_world.x;
+    posture_in_world->y = posture_in_body->x * sin_yaw + posture_in_body->y * cos_yaw +
+                          chassis->posture.in_world.y;
     posture_in_world->yaw = posture_in_body->yaw + chassis->posture.in_world.yaw;
 }
 
@@ -168,22 +167,27 @@ static void update_chassis_velocity_control(Chassis_t* chassis)
         Chassis_WorldVelocity2BodyVelocity(chassis,
                                            &chassis->velocity.in_world,
                                            &chassis->velocity.in_body);
-        // 进行修正
-        const float              beta     = DEG2RAD(0.5f * chassis->velocity.in_body.wz * 1e-3f);
-        const float              cot_beta = 1.0f / tanf(beta);
-        const Chassis_Velocity_t temp_velocity = {
-            .vx = beta * (chassis->velocity.in_body.vx * cot_beta + chassis->velocity.in_body.vy),
-            .vy = beta * (chassis->velocity.in_body.vy * cot_beta - chassis->velocity.in_body.vx),
-            .wz = chassis->velocity.in_body.wz
-        };
+
         ChassisDriver_ApplyVelocity(&chassis->driver,
-                                    temp_velocity.vx,
-                                    temp_velocity.vy,
-                                    temp_velocity.wz);
+                                    chassis->velocity.in_body.vx,
+                                    chassis->velocity.in_body.vy,
+                                    chassis->velocity.in_body.wz);
+        // 进行修正 1e-3f 为更新间隔，此处发现前馈并没有什么精度优化，暂时不做前馈
+        // const float              beta     = DEG2RAD(0.5f * chassis->velocity.in_body.wz * 1e-3f);
+        // const float              cot_beta = 1.0f / tanf(beta);
+        // const Chassis_Velocity_t temp_velocity = {
+        //     .vx = beta * (chassis->velocity.in_body.vx * cot_beta +
+        //     chassis->velocity.in_body.vy), .vy = beta * (chassis->velocity.in_body.vy * cot_beta
+        //     - chassis->velocity.in_body.vx), .wz = chassis->velocity.in_body.wz
+        // };
+        // ChassisDriver_ApplyVelocity(&chassis->driver,
+        //                             temp_velocity.vx,
+        //                             temp_velocity.vy,
+        //                             temp_velocity.wz);
     }
     else
     {
-        // 否则基于机体坐标计算速度，则不需要变动
+        // 速度 apply 后会一直生效，相对于 body frame 保持不变，故此处不需要执行任何操作
     }
 }
 
@@ -214,6 +218,7 @@ void update_chassis_position_control(Chassis_t* chassis)
         body_velocity.vx *= ratio;
         body_velocity.vy *= ratio;
     }
+    // PD 控制器里已经设置输出最大值，这里不再做额外计算
     // if (fabsf(body_velocity.wz) > chassis->posture.target.omega)
     // {
     //     const float ratio = chassis->posture.target.omega / fabsf(body_velocity.wz);
@@ -258,9 +263,7 @@ void Chassis_SetTargetPostureInBody(Chassis_t*                     chassis,
                                     const Chassis_PostureTarget_t* relative_target)
 {
     Chassis_PostureTarget_t absolute_target;
-    Chassis_BodyPosture2WorldPosture(chassis,
-                                     &relative_target->posture,
-                                     (Chassis_Posture_t*) &absolute_target);
+    Chassis_BodyPosture2WorldPosture(chassis, &relative_target->posture, &absolute_target.posture);
     absolute_target.speed = relative_target->speed;
     absolute_target.omega = relative_target->omega;
     Chassis_SetTargetPostureInWorld(chassis, &absolute_target);
@@ -274,7 +277,6 @@ void Chassis_SetTargetPostureInBody(Chassis_t*                     chassis,
  * @param target_in_world 是否以世界坐标系为参考系保持速度不变.
  *                        为 true 则车体会相对于世界坐标系保持速度不变;
  *                        为 false 则相对于车身坐标系保持不变.
- *                        没做出来，暂时去掉本参数
  */
 void Chassis_SetVelWorldFrame(Chassis_t*                chassis,
                               const Chassis_Velocity_t* world_velocity,
@@ -300,7 +302,6 @@ void Chassis_SetVelWorldFrame(Chassis_t*                chassis,
  * @param target_in_world 是否以世界坐标系为参考系保持速度不变.
  *                        为 true 则车体会相对于世界坐标系保持速度不变;
  *                        为 false 则相对于车身坐标系保持不变.
- *                        没做出来，暂时去掉本参数
  */
 void Chassis_SetVelBodyFrame(Chassis_t*                chassis,
                              const Chassis_Velocity_t* body_velocity,

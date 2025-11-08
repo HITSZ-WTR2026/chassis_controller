@@ -3,6 +3,8 @@
  * @author  syhanjin
  * @date    2025-11-03
  * @brief   底盘统一接口
+ *
+ * @attention 在本驱动生效范围内，所有与角度有关的变量单位均为 deg，除非带上特殊后缀 _rad。
  */
 #ifndef CHASSIS_IF_H
 #define CHASSIS_IF_H
@@ -71,8 +73,7 @@ typedef struct
     {
         Chassis_PostureTarget_t target; ///< 目标位置
         /**
-         * feedback_posture [x, y, yaw] - world.posture [x, y, yaw]
-         * = posture.in_world [x, y, yaw]
+         * feedback_yaw - world_yaw = body_yaw
          */
         Chassis_Posture_t in_world; ///< 车身位置（世界坐标系与车身坐标系的变换关系）
 
